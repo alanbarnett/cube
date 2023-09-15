@@ -1,0 +1,793 @@
+#!/usr/bin/perl
+# Alan Barnett - 09/08/2023
+# Rubik's Cube Simulator
+
+# Easy terminal setup and character reading
+use Term::ReadKey;
+
+# --Key Config-----------------------------------------------------------{{{1 #
+# These variables cover every move. For each move (including cube rotations),
+# there is a variable key_move_* where * is your move (R, M, r, Ui, x, etc).
+# Inverse moves are written as the normal move followed by a small i. This is
+# uncommon, but still widely recognized.
+#
+# The variables can be assigned to multiple keys, to have more than one key be
+# able to make the same move. For example, if you do a lot of Roux solving, you
+# could add a "Roux LSE mode" by adding JK to key_move_Mi, UI to key_move_M, DF
+# to key_move_U, and ER to key_move_Ui alongside their usual values. Then,
+# holding shift will give you easy access to MU moves!
+#
+# If you wish not to use a move, you can leave its keys empty.
+
+# Escape characters (like \e for Escape) are not handled due to me not knowing
+# how to print them as of right now.
+
+# Quit the program
+my $key_quit     = 'Q';
+
+# Display the keybindings
+my $key_help     = '?';
+
+# Increase cube scale
+my $key_inc_size = '=+';
+# Decrease cube scale
+my $key_dec_size = '-';
+
+# Face moves
+my $key_move_R   = 'u';
+my $key_move_Ri  = 'e';
+my $key_move_L   = 's';
+my $key_move_Li  = 'f';
+my $key_move_F   = 'm';
+my $key_move_Fi  = 'g';
+my $key_move_B   = 'w';
+my $key_move_Bi  = 'y';
+my $key_move_U   = 'nFP';
+my $key_move_Ui  = 'tST';
+my $key_move_D   = 'r';
+my $key_move_Di  = 'i';
+
+# Wide moves
+my $key_move_r   = 'l';
+my $key_move_ri  = 'h';
+my $key_move_l   = 'd';
+my $key_move_li  = 'p';
+my $key_move_f   = 'M';
+my $key_move_fi  = 'G';
+my $key_move_b   = 'Y';
+my $key_move_bi  = 'W';
+my $key_move_u   = '';
+my $key_move_ui  = '';
+my $key_move_d   = 'I';
+my $key_move_di  = 'R';
+
+# Slice moves
+my $key_move_M   = 'UL';
+my $key_move_Mi  = 'EN';
+my $key_move_E   = '';
+my $key_move_Ei  = '';
+my $key_move_S   = '';
+my $key_move_Si  = '';
+
+# Rotations
+my $key_move_x   = 'vj';
+my $key_move_xi  = 'bk';
+my $key_move_y   = 'o';
+my $key_move_yi  = 'a';
+my $key_move_z   = ';';
+my $key_move_zi  = 'q';
+# ------------------------------------------------------------------------}}} #
+
+# --Cube Config----------------------------------------------------------{{{1 #
+# Each sticker will be two characters wide and one character tall, assuming a
+# font with a character height roughly double its width. Scale is multiplied to
+# the size of each sticker.
+my $scale = 3;
+
+# Whether or not keybindings are displayed by default. 0 for no, 1 for yes.
+my $help_displayed = 0;
+
+my $u_face_color = "\e[48;5;255m"; # White
+my $f_face_color = "\e[48;5;46m";  # Green
+my $r_face_color = "\e[48;5;196m"; # Red
+my $b_face_color = "\e[48;5;21m";  # Blue
+my $l_face_color = "\e[48;5;208m"; # Orange
+my $d_face_color = "\e[48;5;226m"; # Yellow
+
+# Starting state of the stickers
+my @u_face = ( 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' );
+my @f_face = ( 'f', 'f', 'f', 'f', 'f', 'f', 'f', 'f', 'f' );
+my @r_face = ( 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r' );
+my @b_face = ( 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b', 'b' );
+my @l_face = ( 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l' );
+my @d_face = ( 'd', 'd', 'd', 'd', 'd', 'd', 'd', 'd', 'd' );
+
+# Faces are ordered Up, Front, Right, Back, Left, Down
+# The faces themselves will move about in this array to always represent which
+# one is in the Up position, Front position, etc.
+my @cube = ( \@u_face, \@f_face, \@r_face, \@b_face, \@l_face, \@d_face );
+# ------------------------------------------------------------------------}}} #
+
+# --Signal Handling------------------------------------------------------{{{1 #
+# Quit safely when given common kill signals TODO expand this further
+$SIG{'INT'}  = \&quit_program;
+$SIG{'QUIT'} = \&quit_program;
+$SIG{'TERM'} = \&quit_program;
+
+# Print fresh screen on resize, which will include updating the size variables
+$SIG{'WINCH'} = \&print_new_screen;
+# Variables that will be initialized later with the screen size
+my $term_width;
+my $term_height;
+
+# Handle C-z and fg. bg also will send CONT, so I need to deal with that.
+$SIG{'TSTP'} = \&cube_suspend;
+$SIG{'CONT'} = \&cube_start;
+# ------------------------------------------------------------------------}}} #
+
+# --Printing Functions---------------------------------------------------{{{1 #
+# ---#Original top-corner small printing-----------------------{{{2 #
+#sub print_sticker {
+#  my $sticker = shift;
+#  my $sticker_color;
+#
+#  if    ($sticker eq 'u') { $sticker_color = $u_face_color; }
+#  elsif ($sticker eq 'f') { $sticker_color = $f_face_color; }
+#  elsif ($sticker eq 'r') { $sticker_color = $r_face_color; }
+#  elsif ($sticker eq 'b') { $sticker_color = $b_face_color; }
+#  elsif ($sticker eq 'l') { $sticker_color = $l_face_color; }
+#  elsif ($sticker eq 'd') { $sticker_color = $d_face_color; }
+#
+#  print "$sticker_color  ";
+#}
+#
+#sub print_cube_2d {
+#  # Move cursor to the top corner, so we draw over the old cube. Clearing the
+#  # screen can be flickery.
+#  print "\e[0;0H";
+#
+#  # First row
+#  print_sticker $cube[4]->[0];
+#  print_sticker $cube[0]->[0];
+#  print_sticker $cube[0]->[1];
+#  print_sticker $cube[0]->[2];
+#  print_sticker $cube[2]->[2];
+#  print "\e[m\n";
+#  # Second Row
+#  print_sticker $cube[4]->[1];
+#  print_sticker $cube[0]->[7];
+#  print_sticker $cube[0]->[8];
+#  print_sticker $cube[0]->[3];
+#  print_sticker $cube[2]->[1];
+#  print "\e[m\n";
+#  # Third Row
+#  print_sticker $cube[4]->[2];
+#  print_sticker $cube[0]->[6];
+#  print_sticker $cube[0]->[5];
+#  print_sticker $cube[0]->[4];
+#  print_sticker $cube[2]->[0];
+#  print "\e[m\n";
+#  # Fourth Row
+#  print_sticker $cube[4]->[2];
+#  print_sticker $cube[1]->[0];
+#  print_sticker $cube[1]->[1];
+#  print_sticker $cube[1]->[2];
+#  print_sticker $cube[2]->[0];
+#  print "\e[m\n";
+#  # Fifth Row
+#  print_sticker $cube[4]->[3];
+#  print_sticker $cube[1]->[7];
+#  print_sticker $cube[1]->[8];
+#  print_sticker $cube[1]->[3];
+#  print_sticker $cube[2]->[7];
+#  print "\e[m\n";
+#  # Sixth Row
+#  print_sticker $cube[4]->[4];
+#  print_sticker $cube[1]->[6];
+#  print_sticker $cube[1]->[5];
+#  print_sticker $cube[1]->[4];
+#  print_sticker $cube[2]->[6];
+#  print "\e[m\n";
+#}
+# --------------------------------------------------------------}}} #
+# ---#Double scale centered printing---------------------------{{{2 #
+#sub print_2x_sticker {
+#  my $sticker   = shift;
+#  my $sticker_x = shift;
+#  my $sticker_y = shift;
+#  my $sticker_color;
+#
+#  if    ($sticker eq 'u') { $sticker_color = $u_face_color; }
+#  elsif ($sticker eq 'f') { $sticker_color = $f_face_color; }
+#  elsif ($sticker eq 'r') { $sticker_color = $r_face_color; }
+#  elsif ($sticker eq 'b') { $sticker_color = $b_face_color; }
+#  elsif ($sticker eq 'l') { $sticker_color = $l_face_color; }
+#  elsif ($sticker eq 'd') { $sticker_color = $d_face_color; }
+#
+#  # Jump to sticker location, then print spaces with color
+#  print "\e[${sticker_x};${sticker_y}H${sticker_color}    ";
+#  # Print second line of sticker
+#  $sticker_x += 1;
+#  print "\e[${sticker_x};${sticker_y}H${sticker_color}    ";
+#}
+#
+#sub print_cube_2d_centered_2x {
+#  my $cube_width = 20;
+#  my $cube_height = 12;
+#  my $cube_start_y = int(($term_width - $cube_width) / 2);
+#  my $cube_start_x = int(($term_height - $cube_height) / 2);
+#
+#  # First row
+#  print_2x_sticker $cube[4]->[0], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[0]->[0], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[0]->[1], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[0]->[2], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[2], $cube_start_x, $cube_start_y + 16;
+#  $cube_start_x += 2;
+#  # Second Row
+#  print_2x_sticker $cube[4]->[1], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[0]->[7], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[0]->[8], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[0]->[3], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[1], $cube_start_x, $cube_start_y + 16;
+#  $cube_start_x += 2;
+#  # Third Row
+#  print_2x_sticker $cube[4]->[2], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[0]->[6], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[0]->[5], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[0]->[4], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[0], $cube_start_x, $cube_start_y + 16;
+#  $cube_start_x += 2;
+#  # Fourth Row
+#  print_2x_sticker $cube[4]->[2], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[1]->[0], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[1]->[1], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[1]->[2], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[0], $cube_start_x, $cube_start_y + 16;
+#  $cube_start_x += 2;
+#  # Fifth Row
+#  print_2x_sticker $cube[4]->[3], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[1]->[7], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[1]->[8], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[1]->[3], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[7], $cube_start_x, $cube_start_y + 16;
+#  $cube_start_x += 2;
+#  # Sixth Row
+#  print_2x_sticker $cube[4]->[4], $cube_start_x, $cube_start_y;
+#  print_2x_sticker $cube[1]->[6], $cube_start_x, $cube_start_y + 4;
+#  print_2x_sticker $cube[1]->[5], $cube_start_x, $cube_start_y + 8;
+#  print_2x_sticker $cube[1]->[4], $cube_start_x, $cube_start_y + 12;
+#  print_2x_sticker $cube[2]->[6], $cube_start_x, $cube_start_y + 16;
+#
+#  # Reset color to normal
+#  print "\e[m";
+#}
+# --------------------------------------------------------------}}} #
+# ---Scale centered printing!----------------------------------{{{2 #
+sub print_sticker {
+  my $sticker   = shift;
+  my $sticker_x = shift;
+  my $sticker_y = shift;
+
+  my $sticker_color;
+  if    ($sticker eq 'u') { $sticker_color = $u_face_color; }
+  elsif ($sticker eq 'f') { $sticker_color = $f_face_color; }
+  elsif ($sticker eq 'r') { $sticker_color = $r_face_color; }
+  elsif ($sticker eq 'b') { $sticker_color = $b_face_color; }
+  elsif ($sticker eq 'l') { $sticker_color = $l_face_color; }
+  elsif ($sticker eq 'd') { $sticker_color = $d_face_color; }
+
+  for my $line (0..$scale) {
+    # Jump to sticker location, then print spaces with color
+    print "\e[", ($sticker_x + $line), ";${sticker_y}H${sticker_color}", " " x ($scale * 2);
+  }
+}
+
+# I want to check if increasing the cube scale will be bigger than the screen,
+# so I define the base size here. This will change based on the printing
+# function I use, so I define them here.
+my $base_cube_width = 10;
+my $base_cube_height = 6;
+sub print_cube {
+  my $cube_width   = ($base_cube_width * $scale);
+  my $cube_height  = ($base_cube_height * $scale);
+  my $cube_start_y = int(($term_width - $cube_width) / 2);
+  my $cube_start_x = int(($term_height - $cube_height) / 2);
+
+  # First row
+  for my $sticker ($cube[4]->[0], $cube[0]->[0], $cube[0]->[1], $cube[0]->[2], $cube[2]->[2]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+  $cube_start_x += $scale;
+  $cube_start_y -= $cube_width;
+  # Second Row
+  for my $sticker ($cube[4]->[1], $cube[0]->[7], $cube[0]->[8], $cube[0]->[3], $cube[2]->[1]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+  $cube_start_x += $scale;
+  $cube_start_y -= $cube_width;
+  # Third Row
+  for my $sticker ($cube[4]->[2], $cube[0]->[6], $cube[0]->[5], $cube[0]->[4], $cube[2]->[0]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+  $cube_start_x += $scale;
+  $cube_start_y -= $cube_width;
+  # Fourth Row
+  for my $sticker ($cube[4]->[2], $cube[1]->[0], $cube[1]->[1], $cube[1]->[2], $cube[2]->[0]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+  $cube_start_x += $scale;
+  $cube_start_y -= $cube_width;
+  # Fifth Row
+  for my $sticker ($cube[4]->[3], $cube[1]->[7], $cube[1]->[8], $cube[1]->[3], $cube[2]->[7]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+  $cube_start_x += $scale;
+  $cube_start_y -= $cube_width;
+  # Sixth Row
+  for my $sticker ($cube[4]->[4], $cube[1]->[6], $cube[1]->[5], $cube[1]->[4], $cube[2]->[6]) {
+    print_sticker $sticker, $cube_start_x, $cube_start_y;
+    $cube_start_y += ($scale * 2);
+  }
+
+  # Reset color to normal. The \n fixes a strange issue where the terminal
+  # won't draw what we've just printed, until it gets a newline. (ReadKey also
+  # causes a draw, so this is only useful when resuming from suspend.)
+  # Finding a better place for the newline, I hate it here
+  print "\e[m";
+}
+# --------------------------------------------------------------}}} #
+# ---Help Printer----------------------------------------------{{{2 #
+# For now just dump out the text and hope it can all fit on the screen
+sub print_help {
+  print "\e[0;0H";
+  print "Any key between 'single quotes' will trigger the action\n";
+  print "Having nothing between ''s means the action is unbound\n";
+  print "\n";
+
+  print "Quit the program : '$key_quit'\n";
+  print "\n";
+
+  print "Toggle this help screen : '$key_help'\n";
+  print "\n";
+
+  print "Face moves\n";
+  print "R  : '$key_move_R'\n";
+  print "R' : '$key_move_Ri'\n";
+  print "L  : '$key_move_L'\n";
+  print "L' : '$key_move_Li'\n";
+  print "F  : '$key_move_F'\n";
+  print "F' : '$key_move_Fi'\n";
+  print "B  : '$key_move_B'\n";
+  print "B' : '$key_move_Bi'\n";
+  print "U  : '$key_move_U'\n";
+  print "U' : '$key_move_Ui'\n";
+  print "D  : '$key_move_D'\n";
+  print "D' : '$key_move_Di'\n";
+  print "\n";
+
+  print "Wide moves\n";
+  print "r  : '$key_move_r'\n";
+  print "r' : '$key_move_ri'\n";
+  print "l  : '$key_move_l'\n";
+  print "l' : '$key_move_li'\n";
+  print "f  : '$key_move_f'\n";
+  print "f' : '$key_move_fi'\n";
+  print "b  : '$key_move_b'\n";
+  print "b' : '$key_move_bi'\n";
+  print "u  : '$key_move_u'\n";
+  print "u' : '$key_move_ui'\n";
+  print "d  : '$key_move_d'\n";
+  print "d' : '$key_move_di'\n";
+  print "\n";
+
+  print "Slice moves\n";
+  print "M  : '$key_move_M'\n";
+  print "M' : '$key_move_Mi'\n";
+  print "E  : '$key_move_E'\n";
+  print "E' : '$key_move_Ei'\n";
+  print "S  : '$key_move_S'\n";
+  print "S' : '$key_move_Si'\n";
+  print "\n";
+
+  print "Rotations\n";
+  print "x  : '$key_move_x'\n";
+  print "x' : '$key_move_xi'\n";
+  print "y  : '$key_move_y'\n";
+  print "y' : '$key_move_yi'\n";
+  print "z  : '$key_move_z'\n";
+  print "z' : '$key_move_zi'";
+}
+# --------------------------------------------------------------}}} #
+
+# Counter-intuitively, returning 0 will be interpreted as a fail, not a success
+sub check_cube_fits {
+  if ( (($base_cube_width  * ($scale)) <= $term_width) &&
+       (($base_cube_height * ($scale)) <= $term_height) ) {
+    return 1;
+  }
+  return 0;
+}
+
+sub print_new_screen {
+  # Update terminal size
+  ($term_width, $term_height) = GetTerminalSize;
+
+  system("clear"); # TODO this clear command, when removed, fixes \n not printing suspend stuff
+  while (! check_cube_fits && $scale > 0) {
+    $scale -= 1;
+  }
+  if ($scale == 0) {
+    print "term too smol";
+    # Don't actually want to keep scale at 0, this ensures that each time we 
+    # print a new screen (only done at program start, and window size change)
+    # it will attempt to fit the cube.
+    $scale = 1;
+    return;
+  }
+  print_cube;
+}
+# ------------------------------------------------------------------------}}} #
+
+# --Cube Functions-------------------------------------------------------{{{1 #
+# --Helper Functions for Rotations & Moves---------------------{{{2 #
+sub rotate_array_of_references {
+  my $array = shift;
+  my $previous = $array->[0];
+  my $temp = $array->[0];
+
+  for my $item (@$array) {
+    $temp = $$item;
+    $$item = $previous;
+    $previous = $temp;
+  }
+
+  ${$array->[0]} = $previous;
+}
+
+sub rev_rotate_array_of_references {
+  my $array = shift;
+  my $prev_ref = $array->[0];
+  my $first_item = ${$array->[0]};
+
+  for my $face_ref (@$array) {
+    $$prev_ref = $$face_ref;
+    $prev_ref = $face_ref;
+  }
+
+  $$prev_ref = $first_item;
+}
+
+sub rotate_face_cw {
+  my $array = shift;
+  my $previous = $$array[0];
+  my $temp = $$array[0];
+  my $center = $$array[8];
+
+  # Rotate every item in a spiral
+  for my $item (@$array) {
+    $temp = $item;
+    $item = $previous;
+    $previous = $temp;
+  }
+  $$array[0] = $previous;
+
+  # Move center piece to first spot, since that's where it's supposed to go
+  # (this is a shit algorithm that I ought to rework at some point)
+  $$array[0] = $$array[8];
+  # Fix center
+  $$array[8] = $center;
+}
+# --------------------------------------------------------------}}} #
+# --Cube Rotation Functions------------------------------------{{{2 #
+sub move_x {
+  my @affected_faces = (
+    \$cube[0],
+    \$cube[3],
+    \$cube[5],
+    \$cube[1],
+  );
+
+  # Adjust back face so they all face the same direction
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+
+  # Cycle the faces that move
+  rotate_array_of_references(\@affected_faces);
+
+  # Re-adjust back face to normal
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+
+  # Two faces need to twist instead of rotate around the cube
+  # Rotate right face
+  rotate_face_cw($cube[2]);
+  rotate_face_cw($cube[2]);
+  # Rotate left face
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+}
+sub move_xi { move_x; move_x; move_x; }
+
+sub move_y {
+  my @affected_faces = (
+    \$cube[1],
+    \$cube[4],
+    \$cube[3],
+    \$cube[2],
+  );
+
+  # Cycle the faces that move
+  rotate_array_of_references(\@affected_faces);
+
+  # Two faces need to twist instead of rotate around the cube
+  # Rotate top face
+  rotate_face_cw($cube[0]);
+  rotate_face_cw($cube[0]);
+  # Rotate bottom face
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+}
+sub move_yi { move_y; move_y; move_y; }
+
+sub move_z {
+  my @affected_faces = (
+    \$cube[0],
+    \$cube[2],
+    \$cube[5],
+    \$cube[4],
+  );
+
+  # Cycle the faces that move
+  rotate_array_of_references(\@affected_faces);
+
+  # Fix faces after cycling
+  # Top face
+  rotate_face_cw($cube[0]);
+  rotate_face_cw($cube[0]);
+  # Right face
+  rotate_face_cw($cube[2]);
+  rotate_face_cw($cube[2]);
+  # Bottom face
+  rotate_face_cw($cube[5]);
+  rotate_face_cw($cube[5]);
+  # Left face
+  rotate_face_cw($cube[4]);
+  rotate_face_cw($cube[4]);
+
+  # Rotate F and B faces to match
+  # Front face
+  rotate_face_cw($cube[1]);
+  rotate_face_cw($cube[1]);
+  # Back face
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+  rotate_face_cw($cube[3]);
+}
+sub move_zi { move_z; move_z; move_z; }
+# --------------------------------------------------------------}}} #
+# --Cube Move Functions----------------------------------------{{{2 #
+# Face moves
+sub move_R {
+  my @affected_edges = (
+    \$cube[0][4],
+    \$cube[0][3],
+    \$cube[0][2],
+
+    \$cube[3][0],
+    \$cube[3][7],
+    \$cube[3][6],
+
+    \$cube[5][4],
+    \$cube[5][3],
+    \$cube[5][2],
+
+    \$cube[1][4],
+    \$cube[1][3],
+    \$cube[1][2],
+  );
+
+  rotate_array_of_references(\@affected_edges);
+  rotate_array_of_references(\@affected_edges);
+  rotate_array_of_references(\@affected_edges);
+
+  # Must also rotate the right face
+  rotate_face_cw($cube[2]);
+  rotate_face_cw($cube[2]);
+}
+sub move_Ri { move_R;  move_R;  move_R;  }
+sub move_L  { move_y;  move_y;  move_R;  move_y; move_y; }
+sub move_Li { move_y;  move_y;  move_Ri; move_y; move_y; }
+sub move_F  { move_yi; move_R;  move_y;  }
+sub move_Fi { move_yi; move_Ri; move_y;  }
+sub move_B  { move_y;  move_R;  move_yi; }
+sub move_Bi { move_y;  move_Ri; move_yi; }
+sub move_U  { move_z;  move_R;  move_zi; }
+sub move_Ui { move_z;  move_Ri; move_zi; }
+sub move_D  { move_zi; move_R;  move_z;  }
+sub move_Di { move_zi; move_Ri; move_z;  }
+
+# Wide moves
+sub move_r  { move_L;  move_x;  }
+sub move_ri { move_Li; move_xi; }
+sub move_l  { move_R;  move_xi; }
+sub move_li { move_Ri; move_x;  }
+sub move_f  { move_B;  move_z;  }
+sub move_fi { move_Bi; move_zi; }
+sub move_b  { move_F;  move_zi; }
+sub move_bi { move_Fi; move_z;  }
+sub move_u  { move_D;  move_y;  }
+sub move_ui { move_Di; move_yi; }
+sub move_d  { move_U;  move_yi; }
+sub move_di { move_Ui; move_y;  }
+
+# Slice moves
+sub move_M  { move_ri; move_R;  }
+sub move_Mi { move_r;  move_Ri; }
+sub move_E  { move_di; move_D;  }
+sub move_Ei { move_d;  move_Di; }
+sub move_S  { move_f;  move_Fi; }
+sub move_Si { move_fi; move_F;  }
+# --------------------------------------------------------------}}} #
+# --Cube Size Functions----------------------------------------{{{2 #
+sub inc_size {
+  # Only increase cube size if it will fit on the screen
+  $scale += 1;
+  if (! check_cube_fits) {
+    $scale -= 1;
+  }
+  # No need to clear screen, the bigger cube will print over the small one
+}
+
+sub dec_size {
+  # Ignore if we're at the minimum size
+  if ($scale le 1) {
+    $scale = 1;
+    return;
+  }
+  $scale -= 1;
+  # Clear the screen, because the smaller cube will print inside the big one
+  system("clear");
+}
+# --------------------------------------------------------------}}} #
+# ------------------------------------------------------------------------}}} #
+
+# --Program Control Functions--------------------------------------------{{{1 #
+sub cube_start {
+  ReadMode('cbreak');   # Lets us handle signals, and detect keypresses
+  system("tput smcup"); # TODO better way to enter alternate screen
+  print "\e[?25l";      # TODO better way to turn off cursor
+  print_new_screen;     # Clears, sets the terminal size, prints the cube
+}
+
+sub cube_stop {
+  print "\e[?25h";      # TODO better way to turn on cursor
+  system("tput rmcup"); # TODO better way to leave alternate screen
+  ReadMode('restore');  # Set terminal back to normal
+}
+
+sub cube_suspend {
+  cube_stop;       # Restore the terminal, but don't quit the program
+  kill STOP => $$; # Suspend current process
+}
+
+# End handler, for calls to exit() (and some other ways programs quit)
+END { cube_stop; }
+
+# For now just exit, I imagine later this could get more complicated though
+sub quit_program {
+  exit 0;
+}
+# ------------------------------------------------------------------------}}} #
+
+# --!! Main Key Handler !!-----------------------------------------------{{{1 #
+sub test_move {
+  my $key = shift;
+  my $move_keys = shift;
+  # If the move has keys assigned, return true if pressed key is one of them
+  return ($move_keys ne "" && $key =~ /[$move_keys]/);
+}
+
+# This function may get more complicated
+sub toggle_help {
+  system("clear");
+  $help_displayed = ! $help_displayed;
+}
+
+sub handle_key {
+  my $key = shift;
+
+  # Quit program
+  if    (test_move $key, $key_quit)     { quit_program; }
+  # Display help
+  elsif (test_move $key, $key_help)     { toggle_help; }
+  # Only allow Quit and Help to work while the help is displayed
+  elsif ($help_displayed) { }
+  # Increase size
+  elsif (test_move $key, $key_inc_size) { inc_size; }
+  # Decrease size
+  elsif (test_move $key, $key_dec_size) { dec_size; }
+  # Face moves
+  elsif (test_move $key, $key_move_R)   { move_R;  }
+  elsif (test_move $key, $key_move_Ri)  { move_Ri; }
+  elsif (test_move $key, $key_move_L)   { move_L;  }
+  elsif (test_move $key, $key_move_Li)  { move_Li; }
+  elsif (test_move $key, $key_move_F)   { move_F;  }
+  elsif (test_move $key, $key_move_Fi)  { move_Fi; }
+  elsif (test_move $key, $key_move_B)   { move_B;  }
+  elsif (test_move $key, $key_move_Bi)  { move_Bi; }
+  elsif (test_move $key, $key_move_U)   { move_U;  }
+  elsif (test_move $key, $key_move_Ui)  { move_Ui; }
+  elsif (test_move $key, $key_move_D)   { move_D;  }
+  elsif (test_move $key, $key_move_Di)  { move_Di; }
+  # Wide moves
+  elsif (test_move $key, $key_move_r)   { move_r;  }
+  elsif (test_move $key, $key_move_ri)  { move_ri; }
+  elsif (test_move $key, $key_move_l)   { move_l;  }
+  elsif (test_move $key, $key_move_li)  { move_li; }
+  elsif (test_move $key, $key_move_f)   { move_f;  }
+  elsif (test_move $key, $key_move_fi)  { move_fi; }
+  elsif (test_move $key, $key_move_b)   { move_b;  }
+  elsif (test_move $key, $key_move_bi)  { move_bi; }
+  elsif (test_move $key, $key_move_u)   { move_u;  }
+  elsif (test_move $key, $key_move_ui)  { move_ui; }
+  elsif (test_move $key, $key_move_d)   { move_d;  }
+  elsif (test_move $key, $key_move_di)  { move_di; }
+  # Slice moves
+  elsif (test_move $key, $key_move_M)   { move_M;  }
+  elsif (test_move $key, $key_move_Mi)  { move_Mi; }
+  elsif (test_move $key, $key_move_E)   { move_E;  }
+  elsif (test_move $key, $key_move_Ei)  { move_Ei; }
+  elsif (test_move $key, $key_move_S)   { move_S;  }
+  elsif (test_move $key, $key_move_Si)  { move_Si; }
+  # Rotations
+  elsif (test_move $key, $key_move_x)   { move_x;  }
+  elsif (test_move $key, $key_move_xi)  { move_xi; }
+  elsif (test_move $key, $key_move_y)   { move_y;  }
+  elsif (test_move $key, $key_move_yi)  { move_yi; }
+  elsif (test_move $key, $key_move_z)   { move_z;  }
+  elsif (test_move $key, $key_move_zi)  { move_zi; }
+  else {
+    # Return 0 to indicate that the key pressed didn't do anything
+    # This way we can not bother with redrawing the screen
+    # A returned 0 is interpreted as 'false'
+    return 0;
+  }
+
+  # This will be interpreted as 'true'
+  return 1;
+}
+# ------------------------------------------------------------------------}}} #
+
+# Start terminal screen
+cube_start;
+
+# Loop while reading keypresses
+my $key;
+while (1) {
+  $key = ReadKey(0);
+  if (handle_key($key)) {
+    if ($help_displayed) { print_help; }
+    else                 { print_cube; }
+  }
+}
