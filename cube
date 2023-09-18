@@ -98,7 +98,7 @@ my $key_move_x   = 'vj';
 my $key_move_xi  = 'bk';
 my $key_move_y   = 'o';
 my $key_move_yi  = 'a';
-my $key_move_z   = ';';
+my $key_move_z   = "'";
 my $key_move_zi  = 'q';
 # ------------------------------------------------------------------------}}} #
 
