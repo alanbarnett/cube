@@ -164,7 +164,7 @@ sub print_sticker {
   elsif ($sticker eq 'l') { $sticker_color = $l_face_color; }
   elsif ($sticker eq 'd') { $sticker_color = $d_face_color; }
 
-  for my $line (0..$scale) {
+  for my $line (0..($scale - 1)) {
     # Jump to sticker location, then print spaces with color
     print "\e[", ($sticker_x + $line), ";${sticker_y}H${sticker_color}", " " x ($scale * 2);
   }
@@ -178,8 +178,8 @@ my $base_cube_height = 6;
 sub print_cube {
   my $cube_width   = ($base_cube_width * $scale);
   my $cube_height  = ($base_cube_height * $scale);
-  my $cube_start_y = int(($term_width - $cube_width) / 2);
-  my $cube_start_x = int(($term_height - $cube_height) / 2);
+  my $cube_start_y = 1 + int(($term_width - $cube_width) / 2);
+  my $cube_start_x = 1 + int(($term_height - $cube_height) / 2);
 
   # First row
   for my $sticker ($cube[4]->[0], $cube[0]->[0], $cube[0]->[1], $cube[0]->[2], $cube[2]->[2]) {
