@@ -305,7 +305,7 @@ sub print_new_screen {
   # Update terminal size
   ($term_width, $term_height) = GetTerminalSize;
 
-  system("clear"); # TODO this clear command, when removed, fixes \n not printing suspend stuff
+  system("clear"); # TODO change this and probably all other syscalls
   while (! check_cube_fits && $scale > 0) {
     $scale -= 1;
   }
@@ -315,9 +315,25 @@ sub print_new_screen {
     # print a new screen (only done at program start, and window size change)
     # it will attempt to fit the cube.
     $scale = 1;
-    return;
+    # TODO setting scale to 1 makes the cube print anyway after hitting a key
+    # TODO print a newline or flush the output so the message actually appears
   }
-  print_cube;
+  else {
+    print_cube;
+  }
+
+  # I'm not printing newlines, so I must manually flush stdout on new screen.
+  # I could set autoflush, but that seems unnecessary when I know that I only
+  # need to manually flush here. This is because:
+  # ReadKey starting a read will flush the output;
+  # C-z during the read means that after executing the WINCH function (this),
+  # control will resume somewhere in the middle of ReadKey;
+  # This does not trigger an additional flush.
+  # If there was no main loop with ReadKey (say, a print_cube and a sleep),
+  # nothing would be printed.
+  # Printing a newline in print_cube would cause lines to shift up by one if
+  # the cube were at the end of the screen, which is undesirable.
+  STDOUT->flush();
 }
 # ------------------------------------------------------------------------}}} #
 
