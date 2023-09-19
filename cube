@@ -76,8 +76,8 @@ my $key_move_r   = 'l';
 my $key_move_ri  = 'h';
 my $key_move_l   = 'd';
 my $key_move_li  = 'p';
-my $key_move_f   = 'M';
-my $key_move_fi  = 'G';
+my $key_move_f   = 'k';
+my $key_move_fi  = 'b';
 my $key_move_b   = 'Y';
 my $key_move_bi  = 'W';
 my $key_move_u   = '';
@@ -90,12 +90,12 @@ my $key_move_M   = 'UL';
 my $key_move_Mi  = 'EN';
 my $key_move_E   = '';
 my $key_move_Ei  = '';
-my $key_move_S   = '';
-my $key_move_Si  = '';
+my $key_move_S   = 'M';
+my $key_move_Si  = 'G';
 
 # Rotations
 my $key_move_x   = 'vj';
-my $key_move_xi  = 'bk';
+my $key_move_xi  = 'z';
 my $key_move_y   = 'o';
 my $key_move_yi  = 'a';
 my $key_move_z   = "'";
