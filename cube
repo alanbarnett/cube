@@ -310,7 +310,7 @@ sub print_new_screen {
     $scale -= 1;
   }
   if ($scale == 0) {
-    print "term too smol";
+    print "no room for cube";
     # Don't actually want to keep scale at 0, this ensures that each time we 
     # print a new screen (only done at program start, and window size change)
     # it will attempt to fit the cube.
