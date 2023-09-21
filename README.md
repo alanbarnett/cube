@@ -1,6 +1,7 @@
 # cube
 
-![https://asciinema.org/a/609595](cube_demo.gif)
+[link to asciicast](https://asciinema.org/a/609595)
+![](cube_demo.gif)
 
 ## Things that work:
 
