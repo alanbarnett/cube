@@ -1,15 +1,15 @@
 # cube
 
-Things that work:
+## Things that work:
 
-## virtual cube
-## adjustable scale
-## configurable keybindings
-## mediocre keybindings display
+- virtual cube
+- adjustable scale
+- configurable keybindings
+- mediocre keybindings display
 
-Things that are yet to come:
+## Things that are yet to come:
 
-## better keybindings display
+### better keybindings display
 
 instead of opening as a full screen help menu like most programs, i would
 rather it be more of a "cheat sheet". I want the face moves and the rotations
